@@ -2,15 +2,17 @@ import { useState } from 'react'
 import axios from 'axios'
 import './EditorPanel.css'
 
-function EditorPanel({ record, apiUrl, onClose, onSave }) {
+function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
   const [formData, setFormData] = useState({
     nr_rys: record.nr_rys,
     full_name: record.full_name || '',
     material: record.material || '',
     date: record.date ? record.date.split('T')[0] : '',
   })
+  const tableName = encodeURIComponent(database.toLowerCase())
   const [filesPath, setFilesPath] = useState(record.pliki_url || '')
   const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
 
@@ -26,7 +28,7 @@ function EditorPanel({ record, apiUrl, onClose, onSave }) {
     setError(null)
     setSuccess(null)
     try {
-      await axios.put(`${apiUrl}/api/bm32/${record.nr_rys}`, {
+      await axios.put(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}`, {
         full_name: formData.full_name || null,
         material: formData.material || null,
         pliki_url: filesPath || null,
@@ -40,6 +42,23 @@ function EditorPanel({ record, apiUrl, onClose, onSave }) {
     }
   }
 
+  const handleDelete = async () => {
+    const ok = window.confirm(`Czy na pewno usunąć rekord ${record.nr_rys}?`)
+    if (!ok) return
+
+    setDeleting(true)
+    setError(null)
+    try {
+      await axios.delete(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}`)
+      setSuccess('Rekord usunięty')
+      setTimeout(() => onSave(), 700)
+    } catch (err) {
+      setError('Błąd przy usuwaniu: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const handlePdfUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
@@ -50,7 +69,7 @@ function EditorPanel({ record, apiUrl, onClose, onSave }) {
     formDataToSend.append('file', file)
 
     try {
-      await axios.post(`${apiUrl}/api/bm32/${record.nr_rys}/upload-pdf`, formDataToSend, {
+      await axios.post(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}/upload-pdf`, formDataToSend, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       setSuccess('PDF załadowany pomyślnie')
@@ -64,7 +83,7 @@ function EditorPanel({ record, apiUrl, onClose, onSave }) {
 
   const handleOpenPdf = async () => {
     try {
-      await axios.get(`${apiUrl}/api/bm32/${record.nr_rys}/open-pdf`)
+      await axios.get(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}/open-pdf`)
     } catch (err) {
       setError('Błąd przy otwieraniu PDF: ' + err.message)
     }
@@ -72,7 +91,7 @@ function EditorPanel({ record, apiUrl, onClose, onSave }) {
 
   const handleOpenFiles = async () => {
     try {
-      await axios.get(`${apiUrl}/api/bm32/${record.nr_rys}/open-files`)
+      await axios.get(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}/open-files`)
     } catch (err) {
       setError('Błąd przy otwieraniu folderu: ' + err.message)
     }
@@ -192,10 +211,17 @@ function EditorPanel({ record, apiUrl, onClose, onSave }) {
         <div className="editor-footer">
           <button
             onClick={handleSave}
-            disabled={uploading}
+            disabled={uploading || deleting}
             className="save-btn"
           >
             💾 Zapisz zmiany
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={uploading || deleting}
+            className="delete-btn"
+          >
+            {deleting ? 'Usuwanie...' : '🗑️ Usuń rekord'}
           </button>
           <button onClick={onClose} className="cancel-btn">
             Anuluj

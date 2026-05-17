@@ -2,7 +2,7 @@ from pathlib import Path
 import pandas as pd
 from openpyxl import load_workbook
 from sqlalchemy.orm import sessionmaker
-from models.bm32 import BM32, engine
+from backend.models.bm32 import DrawingRecord, engine
 
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -27,7 +27,7 @@ def ingestion_func(df, ws):
         raw_material = row['Materiał']
         clean_material = None if pd.isna(raw_material) else str(raw_material)
 
-        new_record = BM32(
+        new_record = DrawingRecord(
             nr_rys    = row['Nr rys.'],
             full_name = row['Pełna nazwa'],
             material  = clean_material,

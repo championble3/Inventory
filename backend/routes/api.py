@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+﻿from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session, sessionmaker
 from typing import List
 from datetime import datetime
@@ -11,23 +11,19 @@ import subprocess
 from pathlib import Path
 from urllib.parse import unquote
 from dotenv import load_dotenv
+import re
 
-from models.bm32 import BM32, engine
+from backend.models.bm32 import DrawingRecord, engine
 from pydantic import BaseModel
 
-
 # ==================== Konfiguracja ścieżek ====================
-
-# Wczytaj zmienne środowiskowe z pliku .env
 load_dotenv()
-
-BASE_DOCS_PATH = os.getenv("BASE_DOCS_PATH", r"F:\REGENERACJA - DOKUMENTACJA")
+BASE_DOCS_PATH = os.getenv('BASE_DOCS_PATH', r'F:\REGENERACJA - DOKUMENTACJA')
 
 SessionLocal = sessionmaker(bind=engine)
 
 
 def get_db():
-    """Dependency do pobierania sesji bazy danych"""
     db = SessionLocal()
     try:
         yield db
@@ -35,10 +31,15 @@ def get_db():
         db.close()
 
 
-# ==================== Pydantic Schematy ====================
+def validate_table_name(table_name: str):
+    if not table_name or not re.match(r'^[A-Za-z0-9_-]+$', table_name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Nieprawidłowa nazwa tabeli: {table_name}'
+        )
 
-class BM32Base(BaseModel):
-    """Bazowy schemat BM32"""
+
+class DrawingRecordBase(BaseModel):
     nr_rys: str
     full_name: str | None = None
     material: str | None = None
@@ -46,231 +47,172 @@ class BM32Base(BaseModel):
     pliki_url: str | None = None
 
 
-class BM32Create(BM32Base):
-    """Schemat do tworzenia nowego rekordu"""
+class DrawingRecordCreate(DrawingRecordBase):
     pass
 
 
-class BM32Update(BaseModel):
-    """Schemat do aktualizacji rekordu"""
+class DrawingRecordUpdate(BaseModel):
     full_name: str | None = None
     material: str | None = None
     pdf_url: str | None = None
     pliki_url: str | None = None
 
 
-class BM32Response(BM32Base):
-    """Schemat odpowiedzi"""
-    date: datetime
+class DrawingRecordResponse(DrawingRecordBase):
+    id: int
+    table_name: str
+    date: datetime | None = None
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class IngestionResult(BaseModel):
-    """Schemat wyniku ingestion"""
     success: bool
     records_added: int
     message: str
 
 
-# ==================== Router ====================
-
-router = APIRouter(prefix="/api/bm32", tags=["BM32"])
+router = APIRouter(prefix='/api/{table_name}', tags=['Drawing Records'])
 
 
-# ==================== GET Endpoints ====================
-#add limit = 100
-@router.get("/", response_model=List[BM32Response])
-def get_all_bm32(skip: int = 0, db: Session = Depends(get_db)):
-    """
-    Pobierz wszystkie rekordy BM32
-    
-    - **skip**: liczba rekordów do pominięcia
-    - **limit**: maksymalna liczba rekordów do zwrócenia
-    """
-    bm32_records = db.query(BM32).offset(skip).all()
-    return bm32_records
+@router.get('/', response_model=List[DrawingRecordResponse])
+def get_records(table_name: str, skip: int = 0, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    records = db.query(DrawingRecord).filter(DrawingRecord.table_name == table_name).offset(skip).all()
+    return records
 
 
-@router.get("/{nr_rys}", response_model=BM32Response)
-def get_bm32_by_id(nr_rys: str, db: Session = Depends(get_db)):
-    """
-    Pobierz rekord BM32 po numerze rysunku
-    
-    - **nr_rys**: numer rysunku
-    """
-    bm32_record = db.query(BM32).filter(BM32.nr_rys == nr_rys).first()
-    
-    if not bm32_record:
+@router.get('/{nr_rys}', response_model=DrawingRecordResponse)
+def get_record(table_name: str, nr_rys: str, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    record = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.nr_rys == nr_rys
+    ).first()
+    if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Rekord z nr_rys={nr_rys} nie znaleziony"
+            detail=f'Rekord z nr_rys={nr_rys} nie znaleziony w tabeli {table_name}'
         )
-    
-    return bm32_record
+    return record
 
 
-# ==================== POST Endpoints ====================
-
-@router.post("/", response_model=BM32Response, status_code=status.HTTP_201_CREATED)
-def create_bm32(bm32: BM32Create, db: Session = Depends(get_db)):
-    """
-    Utwórz nowy rekord BM32
-    
-    - **nr_rys**: numer rysunku (wymagane)
-    - **full_name**: pełna nazwa
-    - **material**: materiał
-    - **pdf_url**: URL do PDF
-    - **pliki_url**: URL do plików
-    """
-    # Sprawdzenie czy rekord już istnieje
-    existing_record = db.query(BM32).filter(BM32.nr_rys == bm32.nr_rys).first()
+@router.post('/', response_model=DrawingRecordResponse, status_code=status.HTTP_201_CREATED)
+def create_record(table_name: str, record: DrawingRecordCreate, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    existing_record = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.nr_rys == record.nr_rys
+    ).first()
     if existing_record:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Rekord z nr_rys={bm32.nr_rys} już istnieje"
+            detail=f'Rekord z nr_rys={record.nr_rys} już istnieje w tabeli {table_name}'
         )
-    
-    # Tworzenie nowego rekordu
-    new_bm32 = BM32(
-        nr_rys=bm32.nr_rys,
-        full_name=bm32.full_name,
-        material=bm32.material,
-        pdf_url=bm32.pdf_url,
-        pliki_url=bm32.pliki_url,
+
+    new_record = DrawingRecord(
+        table_name=table_name,
+        nr_rys=record.nr_rys,
+        full_name=record.full_name,
+        material=record.material,
+        pdf_url=record.pdf_url,
+        pliki_url=record.pliki_url,
         date=datetime.now()
     )
-    
-    db.add(new_bm32)
+    db.add(new_record)
     db.commit()
-    db.refresh(new_bm32)
-    
-    return new_bm32
+    db.refresh(new_record)
+    return new_record
 
 
-# ==================== PUT/PATCH Endpoints ====================
-
-@router.put("/{nr_rys}", response_model=BM32Response)
-def update_bm32(nr_rys: str, bm32_update: BM32Update, db: Session = Depends(get_db)):
-    """
-    Aktualizuj rekord BM32
-    
-    - **nr_rys**: numer rysunku
-    """
-    bm32_record = db.query(BM32).filter(BM32.nr_rys == nr_rys).first()
-    
-    if not bm32_record:
+@router.put('/{nr_rys}', response_model=DrawingRecordResponse)
+def update_record(table_name: str, nr_rys: str, record_update: DrawingRecordUpdate, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    record = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.nr_rys == nr_rys
+    ).first()
+    if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Rekord z nr_rys={nr_rys} nie znaleziony"
+            detail=f'Rekord z nr_rys={nr_rys} nie znaleziony w tabeli {table_name}'
         )
-    
-    # Aktualizacja pól
-    update_data = bm32_update.dict(exclude_unset=True)
+    update_data = record_update.dict(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(bm32_record, field, value)
-    
+        setattr(record, field, value)
     db.commit()
-    db.refresh(bm32_record)
-    
-    return bm32_record
+    db.refresh(record)
+    return record
 
 
-# ==================== DELETE Endpoints ====================
-
-@router.delete("/{nr_rys}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_bm32(nr_rys: str, db: Session = Depends(get_db)):
-    """
-    Usuń rekord BM32
-    
-    - **nr_rys**: numer rysunku
-    """
-    bm32_record = db.query(BM32).filter(BM32.nr_rys == nr_rys).first()
-    
-    if not bm32_record:
+@router.delete('/{nr_rys}', status_code=status.HTTP_204_NO_CONTENT)
+def delete_record(table_name: str, nr_rys: str, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    record = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.nr_rys == nr_rys
+    ).first()
+    if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Rekord z nr_rys={nr_rys} nie znaleziony"
+            detail=f'Rekord z nr_rys={nr_rys} nie znaleziony w tabeli {table_name}'
         )
-    
-    db.delete(bm32_record)
+    db.delete(record)
     db.commit()
-    
     return None
 
 
-# ==================== Search/Filter Endpoints ====================
-
-@router.get("/search/material/{material}", response_model=List[BM32Response])
-def search_by_material(material: str, db: Session = Depends(get_db)):
-    """
-    Wyszukaj rekordy po materiale
-    
-    - **material**: materiał do wyszukania
-    """
-    records = db.query(BM32).filter(BM32.material.contains(material)).all()
+@router.get('/search/material/{material}', response_model=List[DrawingRecordResponse])
+def search_by_material(table_name: str, material: str, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    records = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.material.contains(material)
+    ).all()
     return records
 
 
-@router.get("/search/name/{full_name}", response_model=List[BM32Response])
-def search_by_name(full_name: str, db: Session = Depends(get_db)):
-    """
-    Wyszukaj rekordy po nazwie
-    
-    - **full_name**: nazwa do wyszukania
-    """
-    records = db.query(BM32).filter(BM32.full_name.contains(full_name)).all()
+@router.get('/search/name/{full_name}', response_model=List[DrawingRecordResponse])
+def search_by_name(table_name: str, full_name: str, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    records = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.full_name.contains(full_name)
+    ).all()
     return records
 
 
-# ==================== Ingestion Endpoint ====================
-
-@router.post("/ingestion/excel", response_model=IngestionResult)
-def ingest_from_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """
-    Wczytaj dane z pliku Excel
-    
-    Oczekuje pliku .xlsx z arkuszem 'BM32' zawierającym kolumny:
-    - Nr rys.
-    - Pełna nazwa
-    - Materiał
-    - Data
-    - pdf_url (hiperlącze)
-    - pliki_url (hiperlącze)
-    """
+@router.post('/ingestion/excel', response_model=IngestionResult)
+def ingest_from_excel(table_name: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    validate_table_name(table_name)
     try:
-        # Odczyt pliku Excel
         contents = file.file.read()
         excel_file = io.BytesIO(contents)
-        
-        # Załaduj dane
-        df = pd.read_excel(excel_file, sheet_name='BM32')
+        df = pd.read_excel(excel_file, sheet_name=table_name)
         excel_file.seek(0)
-        ws = load_workbook(excel_file)['BM32']
-        
+        ws = load_workbook(excel_file)[table_name]
         ws_rows = list(ws.iter_rows(min_row=2))
         records_added = 0
-        
+
         for (_, row), ws_row in zip(df.iterrows(), ws_rows):
-            # Pobierz hiperłącza
             pdf_cell = ws_row[4]
             pliki_cell = ws_row[5]
-            
-            # Wyczyść datę
+            nr_rys = row.get('Nr rys.')
+            if pd.isna(nr_rys) or nr_rys is None:
+                continue
+            nr_rys = str(nr_rys)
             raw_date = row.get('Data')
             clean_date = None if pd.isna(raw_date) else raw_date
-            
-            # Wyczyść materiał
             raw_material = row.get('Materiał')
             clean_material = None if pd.isna(raw_material) else str(raw_material)
-            
-            # Sprawdź czy rekord już istnieje
-            nr_rys = row.get('Nr rys.')
-            existing = db.query(BM32).filter(BM32.nr_rys == nr_rys).first()
-            
+            existing = db.query(DrawingRecord).filter(
+                DrawingRecord.table_name == table_name,
+                DrawingRecord.nr_rys == nr_rys
+            ).first()
             if not existing:
-                new_record = BM32(
+                new_record = DrawingRecord(
+                    table_name=table_name,
                     nr_rys=nr_rys,
                     full_name=row.get('Pełna nazwa'),
                     material=clean_material,
@@ -280,163 +222,123 @@ def ingest_from_excel(file: UploadFile = File(...), db: Session = Depends(get_db
                 )
                 db.add(new_record)
                 records_added += 1
-        
+
         db.commit()
-        
         return IngestionResult(
             success=True,
             records_added=records_added,
-            message=f"Pomyślnie wczytano {records_added} nowych rekordów z pliku {file.filename}"
+            message=f'Pomyślnie wczytano {records_added} nowych rekordów do tabeli {table_name}'
         )
-        
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Błąd podczas ingestion: {str(e)}"
+            detail=f'Błąd podczas ingestion: {str(e)}'
         )
 
 
-# ==================== File Management Endpoints ====================
-
-@router.post("/{nr_rys}/upload-pdf")
-async def upload_pdf(nr_rys: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """
-    Prześlij plik PDF dla rekordu
-    
-    - **nr_rys**: numer rysunku
-    - **file**: plik PDF
-    """
-    bm32_record = db.query(BM32).filter(BM32.nr_rys == nr_rys).first()
-    
-    if not bm32_record:
+@router.post('/{nr_rys}/upload-pdf')
+async def upload_pdf(table_name: str, nr_rys: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    record = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.nr_rys == nr_rys
+    ).first()
+    if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Rekord z nr_rys={nr_rys} nie znaleziony"
+            detail=f'Rekord z nr_rys={nr_rys} nie znaleziony w tabeli {table_name}'
         )
-    
     try:
-        # Utwórz folder jeśli nie istnieje
-        pdfs_dir = Path(__file__).parent.parent / "pdfs" / nr_rys
+        pdfs_dir = Path(__file__).parent.parent / 'pdfs' / table_name / nr_rys
         pdfs_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Zapisz plik
         file_path = pdfs_dir / file.filename
         contents = await file.read()
-        with open(file_path, "wb") as f:
+        with open(file_path, 'wb') as f:
             f.write(contents)
-        
-        # Aktualizuj ścieżkę w bazie
-        bm32_record.pdf_url = str(file_path)
+        record.pdf_url = str(file_path)
         db.commit()
-        
         return {
-            "success": True,
-            "message": f"PDF {file.filename} załadowany pomyślnie",
-            "pdf_path": str(file_path)
+            'success': True,
+            'message': f'PDF {file.filename} załadowany pomyślnie',
+            'pdf_path': str(file_path)
         }
-    
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Błąd przy przesyłaniu PDF: {str(e)}"
+            detail=f'Błąd przy przesyłaniu PDF: {str(e)}'
         )
 
 
-@router.get("/{nr_rys}/open-pdf")
-def open_pdf(nr_rys: str, db: Session = Depends(get_db)):
-    """
-    Otwórz plik PDF dla rekordu
-    
-    - **nr_rys**: numer rysunku
-    """
-    bm32_record = db.query(BM32).filter(BM32.nr_rys == nr_rys).first()
-    
-    if not bm32_record:
+@router.get('/{nr_rys}/open-pdf')
+def open_pdf(table_name: str, nr_rys: str, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    record = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.nr_rys == nr_rys
+    ).first()
+    if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Rekord z nr_rys={nr_rys} nie znaleziony"
+            detail=f'Rekord z nr_rys={nr_rys} nie znaleziony w tabeli {table_name}'
         )
-    
-    if not bm32_record.pdf_url:
+    if not record.pdf_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Brak przypisanego pliku PDF dla nr_rys={nr_rys}"
+            detail=f'Brak przypisanego pliku PDF dla nr_rys={nr_rys}'
         )
-    
-    # Zdekoduj URL-encoded ścieżkę
-    pdf_path = unquote(bm32_record.pdf_url)
+    pdf_path = unquote(record.pdf_url)
     if not os.path.isabs(pdf_path):
         pdf_path = os.path.join(BASE_DOCS_PATH, pdf_path)
-    
     try:
         if not os.path.exists(pdf_path):
-            raise Exception(f"Plik nie istnieje na dysku: {pdf_path}")
-        
-        # Otwórz plik w domyślnej aplikacji
+            raise Exception(f'Plik nie istnieje na dysku: {pdf_path}')
         if platform.system() == 'Windows':
             os.startfile(pdf_path)
-        elif platform.system() == 'Darwin':  # macOS
+        elif platform.system() == 'Darwin':
             subprocess.run(['open', pdf_path])
-        else:  # Linux
+        else:
             subprocess.run(['xdg-open', pdf_path])
-        
-        return {"success": True, "message": f"Otwieranie pliku: {pdf_path}"}
-    
+        return {'success': True, 'message': f'Otwieranie pliku: {pdf_path}'}
     except Exception as e:
-        print(f"ERROR: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Błąd przy otwieraniu PDF: {str(e)}"
+            detail=f'Błąd przy otwieraniu PDF: {str(e)}'
         )
 
 
-@router.get("/{nr_rys}/open-files")
-def open_files(nr_rys: str, db: Session = Depends(get_db)):
-    """
-    Otwórz folder z plikami dla rekordu
-    
-    - **nr_rys**: numer rysunku
-    """
-    bm32_record = db.query(BM32).filter(BM32.nr_rys == nr_rys).first()
-    
-    if not bm32_record:
+@router.get('/{nr_rys}/open-files')
+def open_files(table_name: str, nr_rys: str, db: Session = Depends(get_db)):
+    validate_table_name(table_name)
+    record = db.query(DrawingRecord).filter(
+        DrawingRecord.table_name == table_name,
+        DrawingRecord.nr_rys == nr_rys
+    ).first()
+    if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Rekord z nr_rys={nr_rys} nie znaleziony"
+            detail=f'Rekord z nr_rys={nr_rys} nie znaleziony w tabeli {table_name}'
         )
-    
-    if not bm32_record.pliki_url:
+    if not record.pliki_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Brak przypisanego folderu z plikami dla nr_rys={nr_rys}"
+            detail=f'Brak przypisanego folderu z plikami dla nr_rys={nr_rys}'
         )
-    
-    # Zdekoduj URL-encoded ścieżkę
-    files_path = unquote(bm32_record.pliki_url)
+    files_path = unquote(record.pliki_url)
     if not os.path.isabs(files_path):
         files_path = os.path.join(BASE_DOCS_PATH, files_path)
-    
     try:
         if not os.path.exists(files_path):
-            raise Exception(f"Folder nie istnieje na dysku: {files_path}")
-        
-        # Otwórz folder w eksploratorze
+            raise Exception(f'Folder nie istnieje na dysku: {files_path}')
         if platform.system() == 'Windows':
             os.startfile(files_path)
-        elif platform.system() == 'Darwin':  # macOS
+        elif platform.system() == 'Darwin':
             subprocess.run(['open', files_path])
-        else:  # Linux
+        else:
             subprocess.run(['xdg-open', files_path])
-        
-        return {"success": True, "message": f"Otwieranie folderu: {files_path}"}
-    
+        return {'success': True, 'message': f'Otwieranie folderu: {files_path}'}
     except Exception as e:
-        print(f"ERROR: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Błąd przy otwieraniu folderu: {str(e)}"
+            detail=f'Błąd przy otwieraniu folderu: {str(e)}'
         )
-
-
-

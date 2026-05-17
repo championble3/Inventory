@@ -1,7 +1,18 @@
 import './Sidebar.css'
 
 function Sidebar({ selectedDatabase, onSelectDatabase }) {
-  const databases = ['BM32']
+  const databases = [
+    { id: 'BM32', label: 'BM32' },
+    { id: 'DnoFormy', label: 'DnoFormy' },
+    { id: 'Formy', label: 'Formy' },
+    { id: 'Arkusze', label: 'Arkusze' },
+    { id: 'Plyty', label: 'Płyty' },
+    { id: 'Sheet6', label: 'Sheet 6' },
+    { id: 'Sheet7', label: 'Sheet 7' },
+    { id: 'Sheet8', label: 'Sheet 8' },
+    { id: 'Sheet9', label: 'Sheet 9' },
+    { id: 'Sheet10', label: 'Sheet 10' },
+  ]
 
   return (
     <aside className="sidebar">
@@ -12,11 +23,11 @@ function Sidebar({ selectedDatabase, onSelectDatabase }) {
       <nav className="database-list">
         {databases.map((db) => (
           <button
-            key={db}
-            className={`database-tab ${selectedDatabase === db ? 'active' : ''}`}
-            onClick={() => onSelectDatabase(db)}
+            key={db.id}
+            className={`database-tab ${selectedDatabase === db.id ? 'active' : ''}`}
+            onClick={() => onSelectDatabase(db.id)}
           >
-            <span className="db-name">{db}</span>
+            <span className="db-name">{db.label}</span>
           </button>
         ))}
       </nav>

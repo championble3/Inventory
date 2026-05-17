@@ -303,3 +303,25 @@
 .cancel-btn:hover {
   background: #d0d0d0;
 }
+
+.delete-btn {
+  flex: 0.8;
+  background: linear-gradient(135deg, #ff7675 0%, #e74c3c 100%);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.delete-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(231, 76, 60, 0.28);
+}
+
+.delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

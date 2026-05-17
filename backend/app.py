@@ -1,60 +1,32 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes.api import router as bm32_router
-
-# ==================== Inicjalizacja aplikacji ====================
+from backend.routes.api import router as api_router
 
 app = FastAPI(
-    title="BM32 API",
-    description="API do zarządzania danymi BM32",
-    version="1.0.0"
+    title='Drawing Records API',
+    description='API do zarządzania rekordami rysunków technicznych',
+    version='1.0.0'
 )
-
-
-# ==================== CORS ====================
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # W produkcji zmienić na konkretne originy
+    allow_origins=['http://localhost:5173'],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
 
+app.include_router(api_router)
 
-# ==================== Rejestracja routerów ====================
-
-app.include_router(bm32_router)
-
-
-# ==================== Root Endpoint ====================
-
-@app.get("/")
+@app.get('/')
 def read_root():
-    """Główny endpoint aplikacji"""
-    return {
-        "message": "Witaj w BM32 API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "redoc": "/redoc"
-    }
+    return {'message': 'Drawing Records API', 'version': '1.0.0'}
 
-
-@app.get("/health")
+@app.get('/health')
 def health_check():
-    """Sprawdzenie zdrowia aplikacji"""
-    return {"status": "OK"}
+    return {'status': 'OK'}
 
-
-# ==================== Uruchomienie ====================
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     import uvicorn
-    
-    uvicorn.run(
-        "app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True  # W produkcji ustawić na False
-    )
 
+    uvicorn.run('app:app', host='0.0.0.0', port=8000, reload=True)

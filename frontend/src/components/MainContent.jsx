@@ -11,7 +11,8 @@ function MainContent({ database, apiUrl }) {
   const [error, setError] = useState(null)
   const [selectedRecord, setSelectedRecord] = useState(null)
 
-  // Pobranie wszystkich rekordów
+  const tableName = encodeURIComponent(database.toLowerCase())
+
   useEffect(() => {
     fetchAllRecords()
   }, [database])
@@ -20,7 +21,7 @@ function MainContent({ database, apiUrl }) {
     setLoading(true)
     setError(null)
     try {
-      const response = await axios.get(`${apiUrl}/api/bm32/`)
+      const response = await axios.get(`${apiUrl}/api/${tableName}/`)
       setRecords(response.data)
     } catch (err) {
       setError('Błąd przy pobieraniu danych: ' + err.message)
@@ -30,7 +31,6 @@ function MainContent({ database, apiUrl }) {
     }
   }
 
-  // Wyszukiwanie rekordu
   const handleSearch = async (e) => {
     e.preventDefault()
     if (!searchTerm.trim()) {
@@ -43,11 +43,11 @@ function MainContent({ database, apiUrl }) {
     try {
       let url = ''
       if (searchType === 'nr_rys') {
-        url = `${apiUrl}/api/bm32/${encodeURIComponent(searchTerm)}`
+        url = `${apiUrl}/api/${tableName}/${encodeURIComponent(searchTerm)}`
       } else if (searchType === 'material') {
-        url = `${apiUrl}/api/bm32/search/material/${encodeURIComponent(searchTerm)}`
+        url = `${apiUrl}/api/${tableName}/search/material/${encodeURIComponent(searchTerm)}`
       } else {
-        url = `${apiUrl}/api/bm32/search/name/${encodeURIComponent(searchTerm)}`
+        url = `${apiUrl}/api/${tableName}/search/name/${encodeURIComponent(searchTerm)}`
       }
 
       const response = await axios.get(url)
@@ -57,6 +57,22 @@ function MainContent({ database, apiUrl }) {
       setRecords([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleOpenPdf = async (record) => {
+    try {
+      await axios.get(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}/open-pdf`)
+    } catch (err) {
+      console.error('Błąd przy otwieraniu PDF:', err.message)
+    }
+  }
+
+  const handleOpenFiles = async (record) => {
+    try {
+      await axios.get(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}/open-files`)
+    } catch (err) {
+      console.error('Błąd przy otwieraniu folderu:', err.message)
     }
   }
 
@@ -124,7 +140,7 @@ function MainContent({ database, apiUrl }) {
             </thead>
             <tbody>
               {records.map((record) => (
-                <tr key={record.nr_rys}>
+                <tr key={record.id || record.nr_rys}>
                   <td className="nr-rys">{record.nr_rys}</td>
                   <td>{record.full_name || '-'}</td>
                   <td>{record.material || '-'}</td>
@@ -132,7 +148,7 @@ function MainContent({ database, apiUrl }) {
                   <td>
                     {record.pdf_url ? (
                       <button 
-                        onClick={() => handleOpenPdf(record, apiUrl)}
+                        onClick={() => handleOpenPdf(record)}
                         className="link-btn"
                       >
                         📄 Otwórz
@@ -144,7 +160,7 @@ function MainContent({ database, apiUrl }) {
                   <td>
                     {record.pliki_url ? (
                       <button 
-                        onClick={() => handleOpenFiles(record, apiUrl)}
+                        onClick={() => handleOpenFiles(record)}
                         className="link-btn"
                       >
                         📁 Otwórz
@@ -175,6 +191,7 @@ function MainContent({ database, apiUrl }) {
       {selectedRecord && (
         <EditorPanel 
           record={selectedRecord}
+          database={database}
           apiUrl={apiUrl}
           onClose={() => setSelectedRecord(null)}
           onSave={() => {
@@ -185,23 +202,6 @@ function MainContent({ database, apiUrl }) {
       )}
     </main>
   )
-}
-
-// Funkcje do obsługi otwierania plików
-async function handleOpenPdf(record, apiUrl) {
-  try {
-    await axios.get(`${apiUrl}/api/bm32/${record.nr_rys}/open-pdf`)
-  } catch (err) {
-    console.error('Błąd przy otwieraniu PDF:', err.message)
-  }
-}
-
-async function handleOpenFiles(record, apiUrl) {
-  try {
-    await axios.get(`${apiUrl}/api/bm32/${record.nr_rys}/open-files`)
-  } catch (err) {
-    console.error('Błąd przy otwieraniu folderu:', err.message)
-  }
 }
 
 export default MainContent

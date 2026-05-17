@@ -8,14 +8,14 @@ from openpyxl import load_workbook
 # Dodaj backend do ścieżki
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.models.bm32 import BM32, engine
+from backend.models.bm32 import DrawingRecord, engine
 
 Session = sessionmaker(bind=engine)
 session = Session()
 
 # === ODCZYT - Po nr_rys ===
 # print("\n=== SZUKAJ PO nr_rys ===")
-# record = session.query(BM32).filter(BM32.nr_rys == 1).first()
+# record = session.query(DrawingRecord).filter(DrawingRecord.nr_rys == 1).first()
 # if record:
 #     print(record)
 # else:
@@ -23,7 +23,7 @@ session = Session()
 
 # === DODAJ NOWY REKORD ===
 # print("\n=== DODAJ NOWY ===")
-# new_record = BM32(
+# new_record = DrawingRecord(
 #     nr_rys=100,
 #     full_name="Test Produkt",
 #     material="Stal",
@@ -35,7 +35,7 @@ session = Session()
 
 # # === EDYTUJ ===
 # print("\n=== EDYTUJ ===")
-# record = session.query(BM32).filter(BM32.nr_rys == 100).first()
+# record = session.query(DrawingRecord).filter(DrawingRecord.nr_rys == 100).first()
 # if record:
 #     record.material = "Aluminium"
 #     session.commit()
@@ -43,7 +43,7 @@ session = Session()
 
 # # === USUŃ ===
 # print("\n=== USUŃ ===")
-# record = session.query(BM32).filter(BM32.nr_rys == 101).first()
+# record = session.query(DrawingRecord).filter(DrawingRecord.nr_rys == 101).first()
 # if record:
 #     session.delete(record)
 #     session.commit()
@@ -86,6 +86,6 @@ def ingestion_func(df, ws):
 #ingestion_func(df,ws)
 
 print("=== WSZYSTKIE REKORDY ===")
-records = session.query(BM32).all()
+records = session.query(DrawingRecord).all()
 for record in records:
     print(record)
