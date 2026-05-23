@@ -74,6 +74,13 @@ class IngestionResult(BaseModel):
 
 
 router = APIRouter(prefix='/api/{table_name}', tags=['Drawing Records'])
+meta_router = APIRouter(prefix='/api', tags=['Drawing Records'])
+
+
+@meta_router.get('/tables', response_model=List[str])
+def list_table_names(db: Session = Depends(get_db)):
+    table_names = db.query(DrawingRecord.table_name).distinct().order_by(DrawingRecord.table_name).all()
+    return [name for (name,) in table_names]
 
 
 @router.get('/', response_model=List[DrawingRecordResponse])

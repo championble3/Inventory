@@ -1,6 +1,6 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routes.api import router as api_router
+from backend.routes.api import router as api_router, meta_router as api_meta_router
 
 app = FastAPI(
     title='Drawing Records API',
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(api_meta_router)
 
 @app.get('/')
 def read_root():

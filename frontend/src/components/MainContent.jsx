@@ -10,8 +10,34 @@ function MainContent({ database, apiUrl }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedRecord, setSelectedRecord] = useState(null)
+  const [isAddingNew, setIsAddingNew] = useState(false)
+
+  const customLabels = {
+    bm32: 'BM32',
+    dnoformy: 'Dno Formy',
+    lfc: 'LFC',
+    ocmi: 'OCMI',
+    pv24: 'PV24',
+  }
+
+  const formatLabel = (name) => {
+    if (!name) return ''
+    if (customLabels[name.toLowerCase()]) {
+      return customLabels[name.toLowerCase()]
+    }
+    return name
+      .replace(/[-_]/g, ' ')
+      .split(' ')
+      .map((word) =>
+        word.toUpperCase() === word
+          ? word
+          : word.charAt(0).toUpperCase() + word.slice(1)
+      )
+      .join(' ')
+  }
 
   const tableName = encodeURIComponent(database.toLowerCase())
+  const displayName = formatLabel(database)
 
   useEffect(() => {
     fetchAllRecords()
@@ -79,7 +105,15 @@ function MainContent({ database, apiUrl }) {
   return (
     <main className="main-content">
       <div className="content-header">
-        <h1>Baza {database}</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h1>Baza {displayName}</h1>
+          <button 
+            onClick={() => setIsAddingNew(true)}
+            className="add-record-btn"
+          >
+            ➕ Dodaj rekord
+          </button>
+        </div>
         <form className="search-form" onSubmit={handleSearch}>
           <select
             value={searchType}
@@ -188,14 +222,19 @@ function MainContent({ database, apiUrl }) {
         <p>Łącznie rysunków: <strong>{records.length}</strong></p>
       </div>
 
-      {selectedRecord && (
+      {(selectedRecord || isAddingNew) && (
         <EditorPanel 
           record={selectedRecord}
           database={database}
           apiUrl={apiUrl}
-          onClose={() => setSelectedRecord(null)}
+          isNew={isAddingNew}
+          onClose={() => {
+            setSelectedRecord(null)
+            setIsAddingNew(false)
+          }}
           onSave={() => {
             setSelectedRecord(null)
+            setIsAddingNew(false)
             fetchAllRecords()
           }}
         />

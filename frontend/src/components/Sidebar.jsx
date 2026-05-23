@@ -1,18 +1,62 @@
+import { useState, useEffect } from 'react'
+import axios from 'axios'
 import './Sidebar.css'
 
-function Sidebar({ selectedDatabase, onSelectDatabase }) {
-  const databases = [
-    { id: 'BM32', label: 'BM32' },
-    { id: 'DnoFormy', label: 'DnoFormy' },
-    { id: 'Formy', label: 'Formy' },
-    { id: 'Arkusze', label: 'Arkusze' },
-    { id: 'Plyty', label: 'Płyty' },
-    { id: 'Sheet6', label: 'Sheet 6' },
-    { id: 'Sheet7', label: 'Sheet 7' },
-    { id: 'Sheet8', label: 'Sheet 8' },
-    { id: 'Sheet9', label: 'Sheet 9' },
-    { id: 'Sheet10', label: 'Sheet 10' },
-  ]
+function Sidebar({ selectedDatabase, onSelectDatabase, apiUrl }) {
+  const [databases, setDatabases] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  // Mapowanie custom labels dla znanych table_name'ów
+  const customLabels = {
+    bm32: 'BM32',
+    dnoformy: 'Dno Formy',
+    lfc: 'LFC',
+    ocmi: 'OCMI',
+    pv24: 'PV24',
+  }
+
+  const formatLabel = (name) => {
+    if (!name) return ''
+    
+    // Jeśli jest custom label, użyj go
+    if (customLabels[name.toLowerCase()]) {
+      return customLabels[name.toLowerCase()]
+    }
+    
+    // W przeciwnym razie spróbuj rozdzielić underscores/hyphens
+    return name
+      .replace(/[-_]/g, ' ')
+      .split(' ')
+      .map((word) =>
+        word.toUpperCase() === word
+          ? word
+          : word.charAt(0).toUpperCase() + word.slice(1)
+      )
+      .join(' ')
+  }
+
+  useEffect(() => {
+    const fetchTables = async () => {
+      try {
+        const response = await axios.get(`${apiUrl}/api/tables`)
+        const tableNames = Array.isArray(response.data) ? response.data : []
+        setDatabases(
+          tableNames.map((name) => ({ id: name, label: formatLabel(name) }))
+        )
+
+        if (tableNames.length > 0 && !tableNames.includes(selectedDatabase)) {
+          onSelectDatabase(tableNames[0])
+        }
+      } catch (error) {
+        console.error('Błąd pobierania tabel:', error)
+        setDatabases([{ id: 'bm32', label: 'BM32' }])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTables()
+  }, [apiUrl, onSelectDatabase, selectedDatabase])
 
   return (
     <aside className="sidebar">

@@ -2,15 +2,16 @@ import { useState } from 'react'
 import axios from 'axios'
 import './EditorPanel.css'
 
-function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
+function EditorPanel({ record, database, apiUrl, onClose, onSave, isNew = false }) {
   const [formData, setFormData] = useState({
-    nr_rys: record.nr_rys,
-    full_name: record.full_name || '',
-    material: record.material || '',
-    date: record.date ? record.date.split('T')[0] : '',
+    nr_rys: isNew ? '' : record?.nr_rys || '',
+    full_name: isNew ? '' : record?.full_name || '',
+    material: isNew ? '' : record?.material || '',
+    date: isNew ? '' : (record?.date ? record.date.split('T')[0] : ''),
   })
   const tableName = encodeURIComponent(database.toLowerCase())
-  const [filesPath, setFilesPath] = useState(record.pliki_url || '')
+  const [filesPath, setFilesPath] = useState(isNew ? '' : record?.pliki_url || '')
+  const [pdfFile, setPdfFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState(null)
@@ -27,18 +28,53 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
   const handleSave = async () => {
     setError(null)
     setSuccess(null)
+    
+    if (!formData.nr_rys.trim()) {
+      setError('Nr rysunku jest wymagany')
+      return
+    }
+
     try {
-      await axios.put(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}`, {
-        full_name: formData.full_name || null,
-        material: formData.material || null,
-        pliki_url: filesPath || null,
-      })
-      setSuccess('Zmiany zapisane pomyślnie')
+      if (isNew) {
+        // Dodawanie nowego rekordu
+        await axios.post(`${apiUrl}/api/${tableName}/`, {
+          nr_rys: formData.nr_rys,
+          full_name: formData.full_name || null,
+          material: formData.material || null,
+          pdf_url: null,
+          pliki_url: filesPath || null,
+        })
+        
+        // Jeśli użytkownik wybrał plik PDF, przesyłamy go
+        if (pdfFile) {
+          const formDataToSend = new FormData()
+          formDataToSend.append('file', pdfFile)
+          try {
+            await axios.post(`${apiUrl}/api/${tableName}/${encodeURIComponent(formData.nr_rys)}/upload-pdf`, formDataToSend, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+            })
+          } catch (pdfErr) {
+            console.error('Błąd przy przesyłaniu PDF:', pdfErr)
+            // Nie przerywamy flow, rekord został dodany
+          }
+        }
+        
+        setSuccess('Rekord dodany pomyślnie')
+      } else {
+        // Edycja istniejącego rekordu
+        await axios.put(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}`, {
+          full_name: formData.full_name || null,
+          material: formData.material || null,
+          pliki_url: filesPath || null,
+        })
+        setSuccess('Zmiany zapisane pomyślnie')
+      }
+      
       setTimeout(() => {
         onSave()
       }, 1000)
     } catch (err) {
-      setError('Błąd przy zapisywaniu: ' + err.message)
+      setError('Błąd przy zapisywaniu: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -82,6 +118,7 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
   }
 
   const handleOpenPdf = async () => {
+    if (!record) return
     try {
       await axios.get(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}/open-pdf`)
     } catch (err) {
@@ -90,6 +127,7 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
   }
 
   const handleOpenFiles = async () => {
+    if (!record) return
     try {
       await axios.get(`${apiUrl}/api/${tableName}/${encodeURIComponent(record.nr_rys)}/open-files`)
     } catch (err) {
@@ -101,7 +139,7 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
     <div className="editor-overlay" onClick={onClose}>
       <div className="editor-panel" onClick={(e) => e.stopPropagation()}>
         <div className="editor-header">
-          <h2>Edytuj rekord: {record.nr_rys}</h2>
+          <h2>{isNew ? 'Dodaj nowy rekord' : `Edytuj rekord: ${record.nr_rys}`}</h2>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
 
@@ -114,9 +152,11 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
               <label>Nr Rysunku</label>
               <input
                 type="text"
+                name="nr_rys"
                 value={formData.nr_rys}
-                disabled
-                className="form-input disabled"
+                onChange={handleInputChange}
+                disabled={!isNew}
+                className={`form-input ${!isNew ? 'disabled' : ''}`}
               />
             </div>
 
@@ -170,19 +210,25 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
                   <input
                     type="file"
                     accept=".pdf"
-                    onChange={handlePdfUpload}
+                    onChange={(e) => setPdfFile(e.target.files[0] || null)}
                     disabled={uploading}
                   />
                 </label>
-                <button
-                  onClick={handleOpenPdf}
-                  disabled={!record.pdf_url || uploading}
-                  className="file-action-btn"
-                >
-                  🔓 Otwórz
-                </button>
+                {!isNew && (
+                  <button
+                    onClick={() => {
+                      if (pdfFile) setPdfFile(null)
+                      else if (record.pdf_url) handleOpenPdf()
+                    }}
+                    disabled={uploading || (!pdfFile && !record.pdf_url)}
+                    className="file-action-btn"
+                  >
+                    {pdfFile ? '❌ Usuń wybór' : '🔓 Otwórz'}
+                  </button>
+                )}
               </div>
-              {record.pdf_url && <p className="file-path">✓ PDF przypisany</p>}
+              {pdfFile && <p className="file-path">✓ {pdfFile.name} wybrany</p>}
+              {!isNew && record.pdf_url && !pdfFile && <p className="file-path">✓ PDF przypisany</p>}
             </div>
 
             <div className="file-group">
@@ -194,15 +240,17 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
                 placeholder="Wpisz ścieżkę do folderu z plikami..."
                 className="folder-input"
               />
-              <div className="file-buttons">
-                <button
-                  onClick={handleOpenFiles}
-                  disabled={!filesPath || uploading}
-                  className="file-action-btn"
-                >
-                  📁 Otwórz folder
-                </button>
-              </div>
+              {!isNew && (
+                <div className="file-buttons">
+                  <button
+                    onClick={handleOpenFiles}
+                    disabled={!filesPath || uploading}
+                    className="file-action-btn"
+                  >
+                    📁 Otwórz folder
+                  </button>
+                </div>
+              )}
               {filesPath && <p className="file-path">✓ Ścieżka podana</p>}
             </div>
           </div>
@@ -214,15 +262,17 @@ function EditorPanel({ record, database, apiUrl, onClose, onSave }) {
             disabled={uploading || deleting}
             className="save-btn"
           >
-            💾 Zapisz zmiany
+            {isNew ? '➕ Dodaj rekord' : '💾 Zapisz zmiany'}
           </button>
-          <button
-            onClick={handleDelete}
-            disabled={uploading || deleting}
-            className="delete-btn"
-          >
-            {deleting ? 'Usuwanie...' : '🗑️ Usuń rekord'}
-          </button>
+          {!isNew && (
+            <button
+              onClick={handleDelete}
+              disabled={uploading || deleting}
+              className="delete-btn"
+            >
+              {deleting ? 'Usuwanie...' : '🗑️ Usuń rekord'}
+            </button>
+          )}
           <button onClick={onClose} className="cancel-btn">
             Anuluj
           </button>

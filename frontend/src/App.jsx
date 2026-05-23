@@ -4,7 +4,7 @@ import MainContent from './components/MainContent'
 import './App.css'
 
 function App() {
-  const [selectedDatabase, setSelectedDatabase] = useState('BM32')
+  const [selectedDatabase, setSelectedDatabase] = useState('bm32')
   const [apiUrl] = useState('http://127.0.0.1:8000')
 
   return (
@@ -12,6 +12,7 @@ function App() {
       <Sidebar 
         selectedDatabase={selectedDatabase}
         onSelectDatabase={setSelectedDatabase}
+        apiUrl={apiUrl}
       />
       <MainContent 
         database={selectedDatabase}

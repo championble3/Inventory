@@ -1,14 +1,20 @@
 from pathlib import Path
+import sys
 import pandas as pd
 from openpyxl import load_workbook
 from sqlalchemy.orm import sessionmaker
+
+# Add the repo root to sys.path so `backend` package imports work when running from backend/
+root_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(root_dir))
+
 from backend.models.bm32 import DrawingRecord, engine
 
 Session = sessionmaker(bind=engine)
 session = Session()
 
-df = pd.read_excel(r"F:\REGENERACJA - DOKUMENTACJA\Rejestr rysunków.xlsm", sheet_name='Dno formy')
-ws = load_workbook(r"F:\REGENERACJA - DOKUMENTACJA\Rejestr rysunków.xlsm")['Dno formy']
+df = pd.read_excel(r"F:\REGENERACJA - DOKUMENTACJA\Rejestr rysunków.xlsm", sheet_name='OCMI')
+ws = load_workbook(r"F:\REGENERACJA - DOKUMENTACJA\Rejestr rysunków.xlsm")['OCMI']
 
 # xls = pd.ExcelFile(r"F:\REGENERACJA - DOKUMENTACJA\Rejestr rysunków.xlsm")
 # print(xls.sheet_names)
@@ -28,6 +34,7 @@ def ingestion_func(df, ws):
         clean_material = None if pd.isna(raw_material) else str(raw_material)
 
         new_record = DrawingRecord(
+            table_name = 'ocmi',
             nr_rys    = row['Nr rys.'],
             full_name = row['Pełna nazwa'],
             material  = clean_material,
@@ -35,18 +42,18 @@ def ingestion_func(df, ws):
             pdf_url   = pdf_cell.hyperlink.target   if pdf_cell.hyperlink   else None,
             pliki_url = pliki_cell.hyperlink.target if pliki_cell.hyperlink else None,
         )
-       #session.add(new_record)
+        session.add(new_record)
+        print(new_record)
 
-    # session.commit()
-    # print(f"Dodano {len(df)} rekordów")
-    print(new_record)
+    session.commit()
+    print(f"Dodano {len(df)} rekordów")
 
-ingestion_func(df,ws)
+#ingestion_func(df,ws)
 
-# print("=== WSZYSTKIE REKORDY ===")
-# records = session.query(BM32).all()
-# for record in records:
-#     print(record)
+print("=== WSZYSTKIE REKORDY ===")
+records = session.query(DrawingRecord).filter(DrawingRecord.table_name == 'ocmi')
+for record in records:
+    print(record)
 
 # record = session.query(BM32).count()
 
